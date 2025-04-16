@@ -1,0 +1,27 @@
+{
+  "main": "index.html",
+  "preload": "preload/services.js",
+  "logo": "logo.png",
+  "development": {
+    "main": "http://localhost:5173"
+  },
+  "features": [
+    {
+      "code": "translate",
+      "explain": "基于LLM的翻译",
+      "cmds": ["翻译", "translate"]
+    },
+    {
+      "code": "over",
+      "cmds": [
+        {
+          "type": "over",
+          "label": "翻译",
+          "exclude": "/xxx/",
+          "minLength": 1,
+          "maxLength": 500000
+        }
+      ]
+    }
+  ]
+}
