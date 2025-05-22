@@ -1,49 +1,17 @@
 import OpenAI from 'openai';
-
-// 翻译模式模板
-const translationPrompts = {
-    general: {
-        name: '通用翻译',
-        prompt: '请将以下文本从{sourceLanguage}翻译成{targetLanguage}，保持原文的意思和语气:\n\n{text}'
-    },
-    academic: {
-        name: '学术翻译',
-        prompt: '请将以下学术文本从{sourceLanguage}翻译成{targetLanguage}，保持专业术语的准确性和学术风格:\n\n{text}'
-    },
-    literary: {
-        name: '文学翻译',
-        prompt: '请将以下文学文本从{sourceLanguage}翻译成{targetLanguage}，注重保留原文的文学风格、修辞和情感:\n\n{text}'
-    },
-    technical: {
-        name: '技术翻译',
-        prompt: '请将以下技术文档从{sourceLanguage}翻译成{targetLanguage}，确保技术术语的准确性和一致性:\n\n{text}'
-    },
-    simplified: {
-        name: '简化翻译',
-        prompt: '请将以下文本从{sourceLanguage}翻译成{targetLanguage}，使用简单易懂的语言，避免复杂表达:\n\n{text}'
-    }
-};
+import zhipuApiRequest from "./llm_call.js";
+import { systemPrompt, translationPrompts } from "./prompt.js";
 
 // 支持的模型配置
 const modelConfigs = {
     zhipu: {
         name: '智谱',
         models: [
-            { id: 'glm-4-flash', name: 'glm-4-flash' }
+            { id: 'GLM-4-Flash-250414', name: 'glm-4-flash' }
         ],
-        baseURL: 'http://218.192.106.250:9090/v1',
-        createClient: (apiKey) => new OpenAI({
-            apiKey: apiKey,
-            baseURL: 'http://218.192.106.250:9090/v1',
-            dangerouslyAllowBrowser: true  // 添加此选项允许在浏览器环境中使用
-        }),
+        createClient: (apiKey) => apiKey,
         translate: async (client, model, prompt) => {
-            const response = await client.chat.completions.create({
-                model: model,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3,
-            });
-            return response.choices[0].message.content;
+            return await zhipuApiRequest(client, model, systemPrompt, prompt);
         }
     },
     doubao: {
@@ -132,7 +100,7 @@ const modelConfigs = {
 const saveCustomConfigs = () => {
     // 创建一个不包含函数的配置副本
     const serializableConfigs = {};
-    
+
     Object.keys(modelConfigs.custom).forEach(key => {
         const config = modelConfigs.custom[key];
         serializableConfigs[key] = {
@@ -142,7 +110,7 @@ const saveCustomConfigs = () => {
             // 不包含函数属性
         };
     });
-    
+
     // 保存可序列化的配置
     window.utools.dbStorage.setItem('custom_model_configs', serializableConfigs);
 };
@@ -204,7 +172,7 @@ export const getTranslationModes = () => {
     // 合并默认翻译模式和自定义翻译模式
     const customPrompts = getCustomPrompts();
     const allPrompts = { ...translationPrompts, ...customPrompts };
-    
+
     return Object.entries(allPrompts).map(([key, value]) => ({
         key,
         name: value.name
@@ -218,7 +186,7 @@ export const getProviders = () => {
         key: `custom_${key}`,
         name: modelConfigs.custom[key].name || `自定义(${key})`
     }));
-    
+
     // 合并默认提供商和自定义提供商
     const defaultProviders = Object.entries(modelConfigs)
         .filter(([key]) => key !== 'custom')
@@ -226,7 +194,7 @@ export const getProviders = () => {
             key,
             name: value.name
         }));
-    
+
     return [...defaultProviders, ...customProviders];
 };
 
@@ -271,7 +239,7 @@ export const translate = async ({
     const customPrompts = getCustomPrompts();
     const allPrompts = { ...translationPrompts, ...customPrompts };
     const promptTemplate = allPrompts[mode]?.prompt || allPrompts.general.prompt;
-    
+
     const prompt = promptTemplate
         .replace('{sourceLanguage}', sourceLanguage)
         .replace('{targetLanguage}', targetLanguage)
@@ -315,7 +283,7 @@ export const detectLanguage = (text) => {
 // 添加自定义模型配置
 export const addCustomModelConfig = (name, baseURL, models) => {
     const key = Date.now().toString(); // 使用时间戳作为唯一标识
-    
+
     modelConfigs.custom[key] = {
         name: name,
         models: models.map(model => ({ id: model.id, name: model.name })),
@@ -334,17 +302,17 @@ export const addCustomModelConfig = (name, baseURL, models) => {
             return response.choices[0].message.content;
         }
     };
-    
+
     // 保存自定义配置到本地存储
     saveCustomConfigs();
-    
+
     return `custom_${key}`;
 };
 
 // 删除自定义模型配置
 export const removeCustomModelConfig = (customKey) => {
     if (!customKey.startsWith('custom_')) return false;
-    
+
     const key = customKey.replace('custom_', '');
     if (modelConfigs.custom[key]) {
         delete modelConfigs.custom[key];
@@ -359,12 +327,12 @@ export const addCustomPrompt = (key, name, promptTemplate) => {
     if (translationPrompts[key]) {
         throw new Error(`提示模板键名 "${key}" 已存在`);
     }
-    
+
     customPrompts[key] = {
         name: name,
         prompt: promptTemplate
     };
-    
+
     saveCustomPrompts();
     return key;
 };
@@ -384,12 +352,12 @@ export const updateCustomPrompt = (key, name, promptTemplate) => {
     if (!customPrompts[key]) {
         throw new Error(`提示模板 "${key}" 不存在`);
     }
-    
+
     customPrompts[key] = {
         name: name,
         prompt: promptTemplate
     };
-    
+
     saveCustomPrompts();
     return key;
 };

@@ -7,6 +7,7 @@
   "dependencies": {
     "ant-design-vue": "^4.0.0",
     "axios": "^1.6.2",
+    "buffer": "^6.0.3",
     "openai": "^4.94.0",
     "vue": "^3.5.13"
   },
