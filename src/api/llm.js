@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import zhipuApiRequest from "./llm_call.js";
+import LLMPostCall from "./llm_call.js";
 import { systemPrompt, translationPrompts } from "./prompt.js";
 
 // 支持的模型配置
@@ -11,64 +11,19 @@ const modelConfigs = {
         ],
         createClient: (apiKey) => apiKey,
         translate: async (client, model, prompt) => {
-            return await zhipuApiRequest(client, model, systemPrompt, prompt);
+            return await LLMPostCall("zhipu",client, model, systemPrompt, prompt);
         }
     },
     doubao: {
         name: '豆包',
         models: [
-            { id: 'Doubao-pro-128k', name: '豆包 128K' }
+            { id: 'doubao-1.5-pro-32k-250115', name: '豆包 32K' },
+            { id: 'doubao-1.5-pro-256k-250115', name: '豆包 256K' },
         ],
-        baseURL: 'http://218.192.106.250:9090/v1',
-        createClient: (apiKey) => new OpenAI({
-            apiKey: apiKey,
-            baseURL: 'http://218.192.106.250:9090/v1',
-            dangerouslyAllowBrowser: true  // 添加此选项允许在浏览器环境中使用
-        }),
+        createClient: (apiKey) => apiKey,
         translate: async (client, model, prompt) => {
-            const response = await client.chat.completions.create({
-                model: model,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3,
-            });
-            return response.choices[0].message.content;
+            return await LLMPostCall("doubao",client, model, systemPrompt, prompt);
         }
-    },
-    deepseek: {
-        name: 'DeepSeek',
-        models: [
-            { id: 'deepseek-chat', name: 'DeepSeek Chat' },
-            { id: 'deepseek-coder', name: 'DeepSeek Coder' }
-        ],
-        baseURL: 'http://api.deepseek.com/v1/chat/completions', // 假设的API地址
-        headers: (apiKey) => ({
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        }),
-        buildPayload: (model, prompt) => ({
-            model: model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3
-        }),
-        extractResponse: (response) => response.data.choices[0].message.content
-    },
-    kimi: {
-        name: 'Kimi',
-        models: [
-            { id: 'kimi-chat', name: 'Kimi Chat' },
-            { id: 'kimi-pro', name: 'Kimi Pro' }
-        ],
-        baseURL: 'http://api.moonshot.cn/v1/chat/completions', // 假设的API地址
-        headers: (apiKey) => ({
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        }),
-        buildPayload: (model, prompt) => ({
-            model: model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3
-        }),
-        extractResponse: (response) => response.data.choices[0].message.content
     },
     openai: {
         name: 'OpenAI',
@@ -77,16 +32,16 @@ const modelConfigs = {
             { id: 'gpt-4', name: 'GPT-4' },
             { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' }
         ],
-        baseURL: 'http://218.192.106.250:9090/v1',
         createClient: (apiKey) => new OpenAI({
             apiKey: apiKey,
-            baseURL: 'http://218.192.106.250:9090/v1',
             dangerouslyAllowBrowser: true  // 添加此选项允许在浏览器环境中使用
         }),
         translate: async (client, model, prompt) => {
             const response = await client.chat.completions.create({
                 model: model,
-                messages: [{ role: 'user', content: prompt }],
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: prompt }],
                 temperature: 0.3,
             });
             return response.choices[0].message.content;
@@ -132,8 +87,10 @@ const loadCustomConfigs = () => {
                 translate: async (client, model, prompt) => {
                     const response = await client.chat.completions.create({
                         model: model,
-                        messages: [{ role: 'user', content: prompt }],
-                        temperature: 0.3,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: prompt }
+                        ],
                     });
                     return response.choices[0].message.content;
                 }

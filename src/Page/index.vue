@@ -421,6 +421,9 @@ const languageOptions = [
                 {{ lang.name }}
               </a-select-option>
             </a-select>
+            <a-button type="primary" @click="handleTranslate" :loading="loading" :disabled="!inputText || isOverLimit">
+              翻译
+            </a-button>
             <a-button type="text" @click="clearText"><delete-outlined /></a-button>
           </div>
           
@@ -435,20 +438,19 @@ const languageOptions = [
             <span class="word-count" :class="{ 'over-limit': isOverLimit }">
               {{ inputLength }} / {{ maxLength }}
             </span>
-            <a-button type="primary" @click="handleTranslate" :loading="loading" :disabled="!inputText || isOverLimit">
-              翻译
-            </a-button>
           </div>
         </div>
         
         <!-- 右侧结果区域 -->
         <div class="output-panel">
+
           <div class="panel-header">
             <a-select v-model:value="targetLanguage" style="width: 120px">
               <a-select-option v-for="lang in languageOptions.filter(l => l.key !== '自动识别')" :key="lang.key" :value="lang.key">
                 {{ lang.name }}
               </a-select-option>
             </a-select>
+
             <!-- 更明显的复制按钮 -->
             <a-button
               type="primary"
@@ -472,7 +474,7 @@ const languageOptions = [
     
     <!-- 自定义模型模态框 -->
     <a-modal
-      v-model:visible="showCustomModelModal"
+      v-model:open="showCustomModelModal"
       title="添加自定义模型"
       @ok="handleAddCustomModel"
       okText="添加"
@@ -502,7 +504,7 @@ const languageOptions = [
     
     <!-- 自定义提示模板模态框 -->
     <a-modal
-      v-model:visible="showCustomPromptModal"
+      v-model:open="showCustomPromptModal"
       :title="isEditingPrompt ? '编辑自定义提示模板' : '添加自定义提示模板'"
       @ok="handleAddCustomPrompt"
       :okText="isEditingPrompt ? '更新' : '添加'"
