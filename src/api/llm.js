@@ -100,13 +100,26 @@ const loadCustomConfigs = () => {
 };
 
 // 自定义提示模板存储
-let customPrompts = {};
+// 修改为按提供商分类存储
+let customPrompts = {
+// 默认分类
+default: {},
+// 按提供商分类
+// zhipu: {},
+// doubao: {},
+// openai: {},
+// custom_xxx: {}
+};
 
 // 从uTools数据库加载自定义提示模板
 const loadCustomPrompts = () => {
     const savedPrompts = window.utools.dbStorage.getItem('custom_prompts');
     if (savedPrompts) {
         customPrompts = savedPrompts;
+        // 确保有默认分类
+        if (!customPrompts.default) {
+            customPrompts.default = {};
+        }
     }
 };
 
@@ -116,8 +129,12 @@ const saveCustomPrompts = () => {
 };
 
 // 获取自定义提示模板
-export const getCustomPrompts = () => {
-    return customPrompts;
+export const getCustomPrompts = (provider = 'default') => {
+    // 确保该提供商的分类存在
+    if (!customPrompts[provider]) {
+        customPrompts[provider] = {};
+    }
+    return customPrompts[provider];
 };
 
 // 初始化加载自定义配置
@@ -125,10 +142,11 @@ loadCustomConfigs();
 loadCustomPrompts();
 
 // 获取所有支持的翻译模式
-export const getTranslationModes = () => {
+export const getTranslationModes = (provider = 'default') => {
     // 合并默认翻译模式和自定义翻译模式
-    const customPrompts = getCustomPrompts();
-    const allPrompts = { ...translationPrompts, ...customPrompts };
+    const providerPrompts = getCustomPrompts(provider);
+    const defaultPrompts = getCustomPrompts('default');
+    const allPrompts = { ...translationPrompts, ...defaultPrompts, ...providerPrompts };
 
     return Object.entries(allPrompts).map(([key, value]) => ({
         key,
@@ -181,6 +199,7 @@ export const translate = async ({
 
     // 处理自定义提供商
     let providerConfig;
+    let providerKey = provider;
     if (provider.startsWith('custom_')) {
         const customKey = provider.replace('custom_', '');
         providerConfig = modelConfigs.custom[customKey];
@@ -193,8 +212,10 @@ export const translate = async ({
     }
 
     // 获取提示模板，支持自定义提示
-    const customPrompts = getCustomPrompts();
-    const allPrompts = { ...translationPrompts, ...customPrompts };
+    // 先查找当前提供商的自定义提示，再查找默认提示，最后使用系统提示
+    const providerPrompts = getCustomPrompts(providerKey);
+    const defaultPrompts = getCustomPrompts('default');
+    const allPrompts = { ...translationPrompts, ...defaultPrompts, ...providerPrompts };
     const promptTemplate = allPrompts[mode]?.prompt || allPrompts.general.prompt;
 
     const prompt = promptTemplate
@@ -280,12 +301,23 @@ export const removeCustomModelConfig = (customKey) => {
 };
 
 // 添加自定义提示模板
-export const addCustomPrompt = (key, name, promptTemplate) => {
-    if (translationPrompts[key]) {
-        throw new Error(`提示模板键名 "${key}" 已存在`);
+export const addCustomPrompt = (key, name, promptTemplate, provider = 'default') => {
+    // 确保该提供商的分类存在
+    if (!customPrompts[provider]) {
+        customPrompts[provider] = {};
+    }
+    
+    // 检查是否与系统提示冲突
+    if (translationPrompts[key] && provider === 'default') {
+        throw new Error(`提示模板键名 "${key}" 已存在于系统提示中`);
+    }
+    
+    // 检查是否与默认提示冲突
+    if (customPrompts.default[key] && provider !== 'default') {
+        throw new Error(`提示模板键名 "${key}" 已存在于默认提示中`);
     }
 
-    customPrompts[key] = {
+    customPrompts[provider][key] = {
         name: name,
         prompt: promptTemplate
     };
@@ -295,9 +327,13 @@ export const addCustomPrompt = (key, name, promptTemplate) => {
 };
 
 // 删除自定义提示模板
-export const removeCustomPrompt = (key) => {
-    if (customPrompts[key]) {
-        delete customPrompts[key];
+export const removeCustomPrompt = (key, provider = 'default') => {
+    if (!customPrompts[provider]) {
+        return false;
+    }
+    
+    if (customPrompts[provider][key]) {
+        delete customPrompts[provider][key];
         saveCustomPrompts();
         return true;
     }
@@ -305,18 +341,85 @@ export const removeCustomPrompt = (key) => {
 };
 
 // 更新自定义提示模板
-export const updateCustomPrompt = (key, name, promptTemplate) => {
-    if (!customPrompts[key]) {
-        throw new Error(`提示模板 "${key}" 不存在`);
+export const updateCustomPrompt = (key, name, promptTemplate, provider = 'default') => {
+    if (!customPrompts[provider]) {
+        customPrompts[provider] = {};
+    }
+    
+    if (!customPrompts[provider][key]) {
+        throw new Error(`提示模板 "${key}" 不存在于当前提供商中`);
     }
 
-    customPrompts[key] = {
+    customPrompts[provider][key] = {
         name: name,
         prompt: promptTemplate
     };
 
     saveCustomPrompts();
     return key;
+};
+
+// 从提供商中删除模型
+export const removeModelFromProvider = (provider, modelId) => {
+    // 处理自定义提供商
+    if (provider.startsWith('custom_')) {
+        const customKey = provider.replace('custom_', '');
+        if (modelConfigs.custom[customKey]) {
+            // 获取当前模型列表
+            const models = modelConfigs.custom[customKey].models;
+            
+            // 确保至少保留一个模型
+            if (models.length <= 1) {
+                throw new Error('无法删除最后一个模型，每个提供商至少需要保留一个模型');
+            }
+            
+            // 查找模型索引
+            const modelIndex = models.findIndex(m => m.id === modelId);
+            if (modelIndex === -1) {
+                throw new Error(`模型ID "${modelId}" 不存在`);
+            }
+            
+            // 删除模型
+            models.splice(modelIndex, 1);
+            
+            // 保存自定义配置
+            saveCustomConfigs();
+            return true;
+        }
+        return false;
+    } else {
+        // 内置提供商不允许删除模型
+        throw new Error(`不能从内置提供商 "${provider}" 删除模型`);
+    }
+};
+
+// 为现有提供商添加模型
+export const addModelToProvider = (provider, modelId, modelName) => {
+    // 处理自定义提供商
+    if (provider.startsWith('custom_')) {
+        const customKey = provider.replace('custom_', '');
+        if (modelConfigs.custom[customKey]) {
+            // 检查模型ID是否已存在
+            const modelExists = modelConfigs.custom[customKey].models.some(m => m.id === modelId);
+            if (modelExists) {
+                throw new Error(`模型ID "${modelId}" 已存在`);
+            }
+            
+            // 添加新模型
+            modelConfigs.custom[customKey].models.push({
+                id: modelId,
+                name: modelName
+            });
+            
+            // 保存自定义配置
+            saveCustomConfigs();
+            return true;
+        }
+        return false;
+    } else {
+        // 内置提供商不允许添加模型
+        throw new Error(`不能为内置提供商 "${provider}" 添加模型`);
+    }
 };
 
 export default {
@@ -330,5 +433,7 @@ export default {
     removeCustomModelConfig,
     addCustomPrompt,
     removeCustomPrompt,
-    getCustomPrompts
+    getCustomPrompts,
+    removeModelFromProvider,
+    addModelToProvider
 };

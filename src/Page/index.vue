@@ -1,10 +1,10 @@
 <script lang="ts" setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue';
-import { 
-  getTranslationModes, 
-  getProviders, 
-  getModels, 
-  translate, 
+import {
+  getTranslationModes,
+  getProviders,
+  getModels,
+  translate,
   getSavedApiKey,
   detectLanguage,
   addCustomModelConfig,
@@ -12,7 +12,9 @@ import {
   addCustomPrompt,
   removeCustomPrompt,
   updateCustomPrompt,
-  getCustomPrompts
+  getCustomPrompts,
+  addModelToProvider,
+  removeModelFromProvider
 } from '../api/llm';
 
 const props = defineProps({
@@ -63,7 +65,7 @@ watch(activeProvider, (newProvider) => {
 const loadModels = () => {
   models.value = getModels(activeProvider.value);
   selectedModel.value = models.value.length > 0 ? models.value[0].id : '';
-  
+
   // 加载保存的API密钥
   apiKey.value = getSavedApiKey(activeProvider.value);
   // 正确引用 props 中的 enterAction
@@ -83,7 +85,7 @@ onMounted(() => {
   if (lastActiveProvider && providers.value.some(p => p.key === lastActiveProvider)) {
     activeProvider.value = lastActiveProvider;
   }
-  
+
   loadModels();
 });
 
@@ -94,21 +96,21 @@ const handleTranslate = async () => {
     error.value = `输入文本超过${maxLength}字符限制`;
     return;
   }
-  
+
   if (!apiKey.value) {
     error.value = '请输入API密钥';
     return;
   }
-  
+
   error.value = '';
   loading.value = true;
-  
+
   try {
     // 如果是自动识别，先检测语言
-    const actualSourceLanguage = sourceLanguage.value === '自动识别' 
-      ? detectLanguage(inputText.value) 
+    const actualSourceLanguage = sourceLanguage.value === '自动识别'
+      ? detectLanguage(inputText.value)
       : sourceLanguage.value;
-    
+
     // 根据检测到的源语言自动切换目标语言，但仅当用户没有手动选择时
     if (sourceLanguage.value === '自动识别' && !userSelectedTarget.value) {
       if (actualSourceLanguage === '中文') {
@@ -117,7 +119,7 @@ const handleTranslate = async () => {
         targetLanguage.value = '中文';
       }
     }
-    
+
     const result = await translate({
       text: inputText.value,
       sourceLanguage: actualSourceLanguage,
@@ -127,7 +129,7 @@ const handleTranslate = async () => {
       mode: selectedMode.value,
       apiKey: apiKey.value
     });
-    
+
     translatedText.value = result;
   } catch (err) {
     console.error('翻译出错:', err);
@@ -149,17 +151,25 @@ const clearText = () => {
 // 复制翻译结果
 const copyResult = () => {
   if (!translatedText.value) return;
-  
+
   window.utools.copyText(translatedText.value);
   window.utools.showNotification('已复制到剪贴板');
 };
 
 // 自定义模型相关
 const showCustomModelModal = ref(false);
+const showAddModelToTabModal = ref(false); // 新增：为当前选项卡添加模型的模态框状态
 const customModelForm = reactive({
   name: '',
   baseURL: '',
-  models: [{ id: '', name: '' }]
+  models: [{ id: '', name: '' }],
+  currentTab: ''
+});
+
+// 新增：为当前选项卡添加的模型
+const addToTabModelForm = reactive({
+  id: '',
+  name: ''
 });
 
 // 自定义提示模板相关
@@ -167,7 +177,8 @@ const showCustomPromptModal = ref(false);
 const customPromptForm = reactive({
   key: '',
   name: '',
-  prompt: ''
+  prompt: '',
+  currentTab: ''
 });
 const isEditingPrompt = ref(false);
 
@@ -178,6 +189,67 @@ const isCustomPrompt = (key) => {
 };
 
 // 添加自定义模型
+// 为当前选项卡添加模型
+const handleAddModelToCurrentTab = () => {
+  // 重置表单
+  addToTabModelForm.id = '';
+  addToTabModelForm.name = '';
+  
+  // 打开模态框
+  showAddModelToTabModal.value = true;
+};
+
+// 新增：处理为当前选项卡添加模型的提交
+const handleAddModelToTab = () => {
+  if (!addToTabModelForm.id || !addToTabModelForm.name) {
+    error.value = '请填写完整的模型信息';
+    return;
+  }
+  
+  try {
+    // 调用API添加模型到当前选项卡
+    const success = addModelToProvider(
+      activeProvider.value,
+      addToTabModelForm.id,
+      addToTabModelForm.name
+    );
+    
+    if (success) {
+      // 重新加载模型列表
+      models.value = getModels(activeProvider.value);
+      
+      // 切换到新添加的模型
+      selectedModel.value = addToTabModelForm.id;
+      
+      // 重置表单
+      addToTabModelForm.id = '';
+      addToTabModelForm.name = '';
+      
+      // 关闭模态框
+      showAddModelToTabModal.value = false;
+      
+      window.utools.showNotification('模型添加成功');
+    } else {
+      error.value = '添加模型失败';
+    }
+  } catch (err) {
+    error.value = `添加模型失败: ${err.message}`;
+  }
+};
+
+// 为当前选项卡添加提示
+const handleAddPromptToCurrentTab = () => {
+  // 设置当前选项卡信息
+  customPromptForm.currentTab = activeProvider.value;
+  // 打开模态框
+  showCustomPromptModal.value = false;
+  // 延迟打开，确保状态已更新
+  setTimeout(() => {
+    showCustomPromptModal.value = true;
+  }, 0);
+};
+
+// 修改添加自定义模型方法
 const handleAddCustomModel = () => {
   if (!customModelForm.name || !customModelForm.baseURL || customModelForm.models.length === 0) {
     error.value = '请填写完整的自定义模型信息';
@@ -201,6 +273,7 @@ const handleAddCustomModel = () => {
     customModelForm.name = '';
     customModelForm.baseURL = '';
     customModelForm.models = [{ id: '', name: '' }];
+    customModelForm.currentTab = '';
     
     // 关闭模态框
     showCustomModelModal.value = false;
@@ -211,44 +284,7 @@ const handleAddCustomModel = () => {
   }
 };
 
-// 添加模型输入框
-const addModelInput = () => {
-  customModelForm.models.push({ id: '', name: '' });
-};
-
-// 删除模型输入框
-const removeModelInput = (index) => {
-  if (customModelForm.models.length > 1) {
-    customModelForm.models.splice(index, 1);
-  }
-};
-
-// 删除自定义模型
-const handleRemoveCustomModel = () => {
-  if (!activeProvider.value.startsWith('custom_')) {
-    error.value = '只能删除自定义模型';
-    return;
-  }
-  
-  try {
-    const success = removeCustomModelConfig(activeProvider.value);
-    if (success) {
-      // 重新加载提供商列表
-      providers.value = getProviders();
-      
-      // 切换到默认提供商
-      activeProvider.value = 'zhipu';
-      
-      window.utools.showNotification('自定义模型删除成功');
-    } else {
-      error.value = '删除自定义模型失败';
-    }
-  } catch (err) {
-    error.value = `删除自定义模型失败: ${err.message}`;
-  }
-};
-
-// 添加自定义提示模板
+// 修改添加自定义提示模板方法
 const handleAddCustomPrompt = () => {
   if (!customPromptForm.key || !customPromptForm.name || !customPromptForm.prompt) {
     error.value = '请填写完整的自定义提示模板信息';
@@ -260,18 +296,20 @@ const handleAddCustomPrompt = () => {
       updateCustomPrompt(
         customPromptForm.key,
         customPromptForm.name,
-        customPromptForm.prompt
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
       );
     } else {
       addCustomPrompt(
         customPromptForm.key,
         customPromptForm.name,
-        customPromptForm.prompt
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
       );
     }
     
     // 重新加载翻译模式列表
-    translationModes.value = getTranslationModes();
+    translationModes.value = getTranslationModes(customPromptForm.currentTab || activeProvider.value);
     
     // 切换到新添加的翻译模式
     selectedMode.value = customPromptForm.key;
@@ -280,6 +318,7 @@ const handleAddCustomPrompt = () => {
     customPromptForm.key = '';
     customPromptForm.name = '';
     customPromptForm.prompt = '';
+    customPromptForm.currentTab = '';
     isEditingPrompt.value = false;
     
     // 关闭模态框
@@ -311,18 +350,105 @@ const handleRemoveCustomPrompt = (key) => {
     if (success) {
       // 重新加载翻译模式列表
       translationModes.value = getTranslationModes();
-      
+
       // 如果当前选中的是被删除的模式，则切换到默认模式
       if (selectedMode.value === key) {
         selectedMode.value = 'general';
       }
-      
+
       window.utools.showNotification('自定义提示模板删除成功');
     } else {
       error.value = '删除自定义提示模板失败';
     }
   } catch (err) {
     error.value = `删除自定义提示模板失败: ${err.message}`;
+  }
+};
+
+// 删除自定义模型
+const handleRemoveCustomModel = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义模型';
+    return;
+  }
+  
+  if (!selectedModel.value) {
+    error.value = '请先选择要删除的模型';
+    return;
+  }
+  
+  try {
+    // 获取当前选中的模型信息
+    const currentModel = models.value.find(m => m.id === selectedModel.value);
+    if (!currentModel) {
+      error.value = '未找到选中的模型';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除模型 "${currentModel.name}" 吗？`)) {
+      // 从自定义提供商中删除模型
+      const customKey = activeProvider.value;
+      const modelId = selectedModel.value;
+      
+      // 调用API删除模型
+      const success = removeModelFromProvider(customKey, modelId);
+      
+      if (success) {
+        // 重新加载模型列表
+        models.value = getModels(activeProvider.value);
+        
+        // 切换到第一个可用模型
+        if (models.value.length > 0) {
+          selectedModel.value = models.value[0].id;
+        }
+        
+        window.utools.showNotification('模型删除成功');
+      } else {
+        error.value = '删除模型失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除模型失败: ${err.message}`;
+  }
+};
+
+// 删除自定义选项卡
+const handleRemoveCustomTab = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义选项卡';
+    return;
+  }
+  
+  try {
+    // 获取当前选项卡信息
+    const currentProvider = providers.value.find(p => p.key === activeProvider.value);
+    if (!currentProvider) {
+      error.value = '未找到选中的选项卡';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除选项卡 "${currentProvider.name}" 吗？`)) {
+      // 调用API删除选项卡
+      const success = removeCustomModelConfig(activeProvider.value);
+      
+      if (success) {
+        // 重新加载提供商列表
+        providers.value = getProviders();
+        
+        // 切换到第一个可用选项卡
+        if (providers.value.length > 0) {
+          activeProvider.value = providers.value[0].key;
+        }
+        
+        window.utools.showNotification('选项卡删除成功');
+      } else {
+        error.value = '删除选项卡失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除选项卡失败: ${err.message}`;
   }
 };
 
@@ -347,8 +473,22 @@ const languageOptions = [
       <a-tabs v-model:activeKey="activeProvider">
         <a-tab-pane v-for="provider in providers" :key="provider.key" :tab="provider.name" />
       </a-tabs>
+      <!-- 添加选项卡按钮 -->
+      <a-button type="link" class="add-tab-button" @click="showCustomModelModal = true">
+        <plus-outlined />
+      </a-button>
+      <!-- 删除选项卡按钮 - 新增 -->
+      <a-button 
+        v-if="activeProvider.startsWith('custom_')" 
+        type="link" 
+        class="delete-tab-button" 
+        danger 
+        @click="handleRemoveCustomTab"
+      >
+        <delete-outlined />
+      </a-button>
     </div>
-    
+
     <!-- 主体翻译区域 -->
     <div class="translator-body">
       <!-- 设置区域 -->
@@ -361,20 +501,15 @@ const languageOptions = [
             </a-select-option>
           </a-select>
           <!-- 添加自定义模型按钮 -->
-          <a-button type="link" @click="showCustomModelModal = true">
+          <a-button type="link" @click="handleAddModelToCurrentTab">
             <plus-outlined /> 添加模型
           </a-button>
           <!-- 删除自定义模型按钮 -->
-          <a-button 
-            v-if="activeProvider.startsWith('custom_')" 
-            type="link" 
-            danger 
-            @click="handleRemoveCustomModel"
-          >
+          <a-button v-if="activeProvider.startsWith('custom_')" type="link" danger @click="handleRemoveCustomModel">
             <delete-outlined /> 删除模型
           </a-button>
         </div>
-        
+
         <div class="setting-item">
           <span class="setting-label">翻译模式:</span>
           <a-select v-model:value="selectedMode" style="width: 180px">
@@ -388,30 +523,22 @@ const languageOptions = [
             <plus-outlined /> 添加提示
           </a-button>
           <!-- 编辑自定义提示模板按钮 -->
-          <a-button 
-            v-if="isCustomPrompt(selectedMode)" 
-            type="link" 
-            @click="handleEditCustomPrompt(selectedMode)"
-          >
+          <a-button v-if="isCustomPrompt(selectedMode)" type="link" @click="handleEditCustomPrompt(selectedMode)">
             <edit-outlined /> 编辑
           </a-button>
           <!-- 删除自定义提示模板按钮 -->
-          <a-button 
-            v-if="isCustomPrompt(selectedMode)" 
-            type="link" 
-            danger 
-            @click="handleRemoveCustomPrompt(selectedMode)"
-          >
+          <a-button v-if="isCustomPrompt(selectedMode)" type="link" danger
+            @click="handleRemoveCustomPrompt(selectedMode)">
             <delete-outlined /> 删除
           </a-button>
         </div>
-        
+
         <div class="setting-item">
           <span class="setting-label">API密钥:</span>
           <a-input-password v-model:value="apiKey" placeholder="请输入API密钥" style="width: 300px" />
         </div>
       </div>
-      
+
       <div class="translator-panel">
         <!-- 左侧输入区域 -->
         <div class="input-panel">
@@ -426,38 +553,31 @@ const languageOptions = [
             </a-button>
             <a-button type="text" @click="clearText"><delete-outlined /></a-button>
           </div>
-          
-          <a-textarea
-            v-model:value="inputText"
-            placeholder="请输入文本内容"
-            :auto-size="{ minRows: 8, maxRows: 15 }"
-            :status="isOverLimit ? 'error' : ''"
-          />
-          
+
+          <a-textarea v-model:value="inputText" placeholder="请输入文本内容" :auto-size="{ minRows: 8, maxRows: 15 }"
+            :status="isOverLimit ? 'error' : ''" />
+
           <div class="panel-footer">
             <span class="word-count" :class="{ 'over-limit': isOverLimit }">
               {{ inputLength }} / {{ maxLength }}
             </span>
           </div>
         </div>
-        
+
         <!-- 右侧结果区域 -->
         <div class="output-panel">
 
           <div class="panel-header">
             <a-select v-model:value="targetLanguage" style="width: 120px">
-              <a-select-option v-for="lang in languageOptions.filter(l => l.key !== '自动识别')" :key="lang.key" :value="lang.key">
+              <a-select-option v-for="lang in languageOptions.filter(l => l.key !== '自动识别')" :key="lang.key"
+                :value="lang.key">
                 {{ lang.name }}
               </a-select-option>
             </a-select>
 
             <!-- 更明显的复制按钮 -->
-            <a-button
-              type="primary"
-              style="margin-left: 12px; font-weight: 600; letter-spacing: 1px;"
-              :disabled="!translatedText"
-              @click="copyResult"
-            >
+            <a-button type="primary" style="margin-left: 12px; font-weight: 600; letter-spacing: 1px;"
+              :disabled="!translatedText" @click="copyResult">
               复制
             </a-button>
           </div>
@@ -471,15 +591,9 @@ const languageOptions = [
         </div>
       </div>
     </div>
-    
+
     <!-- 自定义模型模态框 -->
-    <a-modal
-      v-model:open="showCustomModelModal"
-      title="添加自定义模型"
-      @ok="handleAddCustomModel"
-      okText="添加"
-      cancelText="取消"
-    >
+    <a-modal v-model:open="showCustomModelModal" title="添加自定义模型" @ok="handleAddCustomModel" okText="添加" cancelText="取消">
       <a-form layout="vertical">
         <a-form-item label="名称">
           <a-input v-model:value="customModelForm.name" placeholder="请输入模型名称" />
@@ -491,7 +605,8 @@ const languageOptions = [
           <div v-for="(model, index) in customModelForm.models" :key="index" style="display: flex; margin-bottom: 8px;">
             <a-input v-model:value="model.id" placeholder="模型ID" style="margin-right: 8px;" />
             <a-input v-model:value="model.name" placeholder="模型显示名称" style="margin-right: 8px;" />
-            <a-button type="text" danger @click="removeModelInput(index)" :disabled="customModelForm.models.length <= 1">
+            <a-button type="text" danger @click="removeModelInput(index)"
+              :disabled="customModelForm.models.length <= 1">
               <delete-outlined />
             </a-button>
           </div>
@@ -501,15 +616,40 @@ const languageOptions = [
         </a-form-item>
       </a-form>
     </a-modal>
-    
-    <!-- 自定义提示模板模态框 -->
-    <a-modal
-      v-model:open="showCustomPromptModal"
-      :title="isEditingPrompt ? '编辑自定义提示模板' : '添加自定义提示模板'"
-      @ok="handleAddCustomPrompt"
-      :okText="isEditingPrompt ? '更新' : '添加'"
+
+    <!-- 为当前选项卡添加模型模态框 -->
+    <a-modal v-model:open="showAddModelToTabModal" title="为当前选项卡添加模型" @ok="handleAddModelToTab" okText="添加" cancelText="取消">
+      <a-form layout="vertical">
+        <a-form-item label="模型ID">
+          <a-input v-model:value="addToTabModelForm.id" placeholder="请输入模型ID" />
+        </a-form-item>
+        <a-form-item label="模型名称">
+          <a-input v-model:value="addToTabModelForm.name" placeholder="请输入模型显示名称" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 为当前选项卡添加模型的模态框 -->
+    <a-modal 
+      v-model:open="showAddModelToTabModal" 
+      title="为当前选项卡添加模型" 
+      @ok="handleAddModelToTab" 
+      okText="添加" 
       cancelText="取消"
     >
+      <a-form layout="vertical">
+        <a-form-item label="模型ID">
+          <a-input v-model:value="addToTabModelForm.id" placeholder="请输入模型ID" />
+        </a-form-item>
+        <a-form-item label="模型显示名称">
+          <a-input v-model:value="addToTabModelForm.name" placeholder="请输入模型显示名称" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- 自定义提示模板模态框 -->
+    <a-modal v-model:open="showCustomPromptModal" :title="isEditingPrompt ? '编辑自定义提示模板' : '添加自定义提示模板'"
+      @ok="handleAddCustomPrompt" :okText="isEditingPrompt ? '更新' : '添加'" cancelText="取消">
       <a-form layout="vertical">
         <a-form-item label="键名">
           <a-input v-model:value="customPromptForm.key" placeholder="请输入键名（英文字母和数字）" :disabled="isEditingPrompt" />
@@ -518,11 +658,9 @@ const languageOptions = [
           <a-input v-model:value="customPromptForm.name" placeholder="请输入显示名称" />
         </a-form-item>
         <a-form-item label="提示模板">
-          <a-textarea
-            v-model:value="customPromptForm.prompt"
+          <a-textarea v-model:value="customPromptForm.prompt"
             placeholder="请输入提示模板，使用{sourceLanguage}、{targetLanguage}和{text}作为占位符"
-            :auto-size="{ minRows: 4, maxRows: 8 }"
-          />
+            :auto-size="{ minRows: 4, maxRows: 8 }" />
           <div style="margin-top: 8px; color: #666;">
             提示：使用{sourceLanguage}表示源语言，{targetLanguage}表示目标语言，{text}表示待翻译文本
           </div>
@@ -558,6 +696,7 @@ const languageOptions = [
   border-radius: 8px 8px 0 0;
   transition: background 0.3s;
 }
+
 :deep(.ant-tabs-ink-bar) {
   background: linear-gradient(90deg, #1890ff 0%, #40a9ff 100%);
 }
@@ -594,7 +733,8 @@ const languageOptions = [
   gap: 24px;
 }
 
-.input-panel, .output-panel {
+.input-panel,
+.output-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -605,7 +745,8 @@ const languageOptions = [
   transition: box-shadow 0.3s;
 }
 
-.input-panel:hover, .output-panel:hover {
+.input-panel:hover,
+.output-panel:hover {
   box-shadow: 0 8px 32px 0 rgba(24, 144, 255, 0.12);
 }
 
@@ -648,6 +789,7 @@ const languageOptions = [
   box-shadow: 0 2px 8px 0 rgba(24, 144, 255, 0.10);
   transition: background 0.3s;
 }
+
 :deep(.ant-btn-primary:hover) {
   background: linear-gradient(90deg, #1765ad 0%, #1890ff 100%);
 }
@@ -681,14 +823,17 @@ const languageOptions = [
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: #f1f1f1;
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #b2d8ff;
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #1890ff;
 }
@@ -698,45 +843,1178 @@ const languageOptions = [
   .translator-container {
     background: linear-gradient(135deg, #232946 0%, #16161a 100%);
   }
+
   .translator-header {
     background: #232946;
     border-color: #303030;
     box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
   }
+
   .settings-panel {
     background: linear-gradient(90deg, #232946 0%, #21213a 100%);
     border-left: 5px solid #177ddc;
     box-shadow: 0 2px 16px rgba(24, 144, 255, 0.18);
   }
+
   .setting-label {
     color: #40a9ff;
   }
-  .input-panel, .output-panel {
+
+  .input-panel,
+  .output-panel {
     background: #232946;
     border-color: #303030;
     box-shadow: 0 2px 10px rgba(24, 144, 255, 0.18);
   }
-  .panel-header, .panel-footer {
+
+  .panel-header,
+  .panel-footer {
     background: #21213a;
     border-color: #303030;
   }
+
   .translated-text {
     color: #eaf6fb;
   }
+
   .placeholder {
     color: #666;
   }
+
   .error-message {
     background: rgba(255, 77, 79, 0.08);
   }
+
   ::-webkit-scrollbar-track {
     background: #232946;
   }
+
   ::-webkit-scrollbar-thumb {
     background: #177ddc;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     background: #40a9ff;
   }
 }
+.add-tab-button {
+  margin-left: 8px;
+  padding: 0 8px;
+  font-size: 16px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 4px;
+  background-color: #f0f5ff;
+  color: #1890ff;
+  transition: all 0.3s;
+}
+
+.add-tab-button:hover {
+  background-color: #e6f7ff;
+  color: #40a9ff;
+}
 </style>
+
+// 为当前选项卡添加模型
+const handleAddModelToCurrentTab = () => {
+  // 重置表单
+  addToTabModelForm.id = '';
+  addToTabModelForm.name = '';
+  
+  // 打开模态框
+  showAddModelToTabModal.value = true;
+};
+
+// 新增：处理为当前选项卡添加模型的提交
+const handleAddModelToTab = () => {
+  if (!addToTabModelForm.id || !addToTabModelForm.name) {
+    error.value = '请填写完整的模型信息';
+    return;
+  }
+  
+  try {
+    // 调用API添加模型到当前选项卡
+    const success = addModelToProvider(
+      activeProvider.value,
+      addToTabModelForm.id,
+      addToTabModelForm.name
+    );
+    
+    if (success) {
+      // 重新加载模型列表
+      models.value = getModels(activeProvider.value);
+      
+      // 切换到新添加的模型
+      selectedModel.value = addToTabModelForm.id;
+      
+      // 重置表单
+      addToTabModelForm.id = '';
+      addToTabModelForm.name = '';
+      
+      // 关闭模态框
+      showAddModelToTabModal.value = false;
+      
+      window.utools.showNotification('模型添加成功');
+    } else {
+      error.value = '添加模型失败';
+    }
+  } catch (err) {
+    error.value = `添加模型失败: ${err.message}`;
+  }
+};
+
+// 为当前选项卡添加提示
+const handleAddPromptToCurrentTab = () => {
+  // 设置当前选项卡信息
+  customPromptForm.currentTab = activeProvider.value;
+  // 打开模态框
+  showCustomPromptModal.value = false;
+  // 延迟打开，确保状态已更新
+  setTimeout(() => {
+    showCustomPromptModal.value = true;
+  }, 0);
+};
+
+// 修改添加自定义模型方法
+const handleAddCustomModel = () => {
+  if (!customModelForm.name || !customModelForm.baseURL || customModelForm.models.length === 0) {
+    error.value = '请填写完整的自定义模型信息';
+    return;
+  }
+  
+  try {
+    const newProviderKey = addCustomModelConfig(
+      customModelForm.name,
+      customModelForm.baseURL,
+      customModelForm.models
+    );
+    
+    // 重新加载提供商列表
+    providers.value = getProviders();
+    
+    // 切换到新添加的提供商
+    activeProvider.value = newProviderKey;
+    
+    // 重置表单
+    customModelForm.name = '';
+    customModelForm.baseURL = '';
+    customModelForm.models = [{ id: '', name: '' }];
+    customModelForm.currentTab = '';
+    
+    // 关闭模态框
+    showCustomModelModal.value = false;
+    
+    window.utools.showNotification('自定义模型添加成功');
+  } catch (err) {
+    error.value = `添加自定义模型失败: ${err.message}`;
+  }
+};
+
+// 修改添加自定义提示模板方法
+const handleAddCustomPrompt = () => {
+  if (!customPromptForm.key || !customPromptForm.name || !customPromptForm.prompt) {
+    error.value = '请填写完整的自定义提示模板信息';
+    return;
+  }
+  
+  try {
+    if (isEditingPrompt.value) {
+      updateCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    } else {
+      addCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    }
+    
+    // 重新加载翻译模式列表
+    translationModes.value = getTranslationModes(customPromptForm.currentTab || activeProvider.value);
+    
+    // 切换到新添加的翻译模式
+    selectedMode.value = customPromptForm.key;
+    
+    // 重置表单
+    customPromptForm.key = '';
+    customPromptForm.name = '';
+    customPromptForm.prompt = '';
+    customPromptForm.currentTab = '';
+    isEditingPrompt.value = false;
+    
+    // 关闭模态框
+    showCustomPromptModal.value = false;
+    
+    window.utools.showNotification('自定义提示模板' + (isEditingPrompt.value ? '更新' : '添加') + '成功');
+  } catch (err) {
+    error.value = `自定义提示模板操作失败: ${err.message}`;
+  }
+};
+
+// 编辑自定义提示模板
+const handleEditCustomPrompt = (key) => {
+  const customPrompts = getCustomPrompts();
+  const prompt = customPrompts[key];
+  if (prompt) {
+    customPromptForm.key = key;
+    customPromptForm.name = prompt.name;
+    customPromptForm.prompt = prompt.prompt;
+    isEditingPrompt.value = true;
+    showCustomPromptModal.value = true;
+  }
+};
+
+// 删除自定义提示模板
+const handleRemoveCustomPrompt = (key) => {
+  try {
+    const success = removeCustomPrompt(key);
+    if (success) {
+      // 重新加载翻译模式列表
+      translationModes.value = getTranslationModes();
+
+      // 如果当前选中的是被删除的模式，则切换到默认模式
+      if (selectedMode.value === key) {
+        selectedMode.value = 'general';
+      }
+
+      window.utools.showNotification('自定义提示模板删除成功');
+    } else {
+      error.value = '删除自定义提示模板失败';
+    }
+  } catch (err) {
+    error.value = `删除自定义提示模板失败: ${err.message}`;
+  }
+};
+
+// 删除自定义模型
+const handleRemoveCustomModel = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义模型';
+    return;
+  }
+  
+  if (!selectedModel.value) {
+    error.value = '请先选择要删除的模型';
+    return;
+  }
+  
+  try {
+    // 获取当前选中的模型信息
+    const currentModel = models.value.find(m => m.id === selectedModel.value);
+    if (!currentModel) {
+      error.value = '未找到选中的模型';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除模型 "${currentModel.name}" 吗？`)) {
+      // 从自定义提供商中删除模型
+      const customKey = activeProvider.value;
+      const modelId = selectedModel.value;
+      
+      // 调用API删除模型
+      const success = removeModelFromProvider(customKey, modelId);
+      
+      if (success) {
+        // 重新加载模型列表
+        models.value = getModels(activeProvider.value);
+        
+        // 切换到第一个可用模型
+        if (models.value.length > 0) {
+          selectedModel.value = models.value[0].id;
+        }
+        
+        window.utools.showNotification('模型删除成功');
+      } else {
+        error.value = '删除模型失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除模型失败: ${err.message}`;
+  }
+};
+
+// 删除自定义选项卡
+const handleRemoveCustomTab = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义选项卡';
+    return;
+  }
+  
+  try {
+    // 获取当前选项卡信息
+    const currentProvider = providers.value.find(p => p.key === activeProvider.value);
+    if (!currentProvider) {
+      error.value = '未找到选中的选项卡';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除选项卡 "${currentProvider.name}" 吗？`)) {
+      // 调用API删除选项卡
+      const success = removeCustomModelConfig(activeProvider.value);
+      
+      if (success) {
+        // 重新加载提供商列表
+        providers.value = getProviders();
+        
+        // 切换到第一个可用选项卡
+        if (providers.value.length > 0) {
+          activeProvider.value = providers.value[0].key;
+        }
+        
+        window.utools.showNotification('选项卡删除成功');
+      } else {
+        error.value = '删除选项卡失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除选项卡失败: ${err.message}`;
+  }
+};
+
+// 语言选项
+const languageOptions = [
+  { key: '自动识别', name: '自动识别' },
+  { key: '中文', name: '中文' },
+  { key: '英语', name: '英语' },
+  { key: '日语', name: '日语' },
+  { key: '韩语', name: '韩语' },
+  { key: '法语', name: '法语' },
+  { key: '德语', name: '德语' },
+  { key: '西班牙语', name: '西班牙语' },
+  { key: '俄语', name: '俄语' }
+];
+
+// 为当前选项卡添加模型
+const handleAddModelToCurrentTab = () => {
+  // 重置表单
+  addToTabModelForm.id = '';
+  addToTabModelForm.name = '';
+  
+  // 打开模态框
+  showAddModelToTabModal.value = true;
+};
+
+// 新增：处理为当前选项卡添加模型的提交
+const handleAddModelToTab = () => {
+  if (!addToTabModelForm.id || !addToTabModelForm.name) {
+    error.value = '请填写完整的模型信息';
+    return;
+  }
+  
+  try {
+    // 调用API添加模型到当前选项卡
+    const success = addModelToProvider(
+      activeProvider.value,
+      addToTabModelForm.id,
+      addToTabModelForm.name
+    );
+    
+    if (success) {
+      // 重新加载模型列表
+      models.value = getModels(activeProvider.value);
+      
+      // 切换到新添加的模型
+      selectedModel.value = addToTabModelForm.id;
+      
+      // 重置表单
+      addToTabModelForm.id = '';
+      addToTabModelForm.name = '';
+      
+      // 关闭模态框
+      showAddModelToTabModal.value = false;
+      
+      window.utools.showNotification('模型添加成功');
+    } else {
+      error.value = '添加模型失败';
+    }
+  } catch (err) {
+    error.value = `添加模型失败: ${err.message}`;
+  }
+};
+
+// 为当前选项卡添加提示
+const handleAddPromptToCurrentTab = () => {
+  // 设置当前选项卡信息
+  customPromptForm.currentTab = activeProvider.value;
+  // 打开模态框
+  showCustomPromptModal.value = false;
+  // 延迟打开，确保状态已更新
+  setTimeout(() => {
+    showCustomPromptModal.value = true;
+  }, 0);
+};
+
+// 修改添加自定义模型方法
+const handleAddCustomModel = () => {
+  if (!customModelForm.name || !customModelForm.baseURL || customModelForm.models.length === 0) {
+    error.value = '请填写完整的自定义模型信息';
+    return;
+  }
+  
+  try {
+    const newProviderKey = addCustomModelConfig(
+      customModelForm.name,
+      customModelForm.baseURL,
+      customModelForm.models
+    );
+    
+    // 重新加载提供商列表
+    providers.value = getProviders();
+    
+    // 切换到新添加的提供商
+    activeProvider.value = newProviderKey;
+    
+    // 重置表单
+    customModelForm.name = '';
+    customModelForm.baseURL = '';
+    customModelForm.models = [{ id: '', name: '' }];
+    customModelForm.currentTab = '';
+    
+    // 关闭模态框
+    showCustomModelModal.value = false;
+    
+    window.utools.showNotification('自定义模型添加成功');
+  } catch (err) {
+    error.value = `添加自定义模型失败: ${err.message}`;
+  }
+};
+
+// 修改添加自定义提示模板方法
+const handleAddCustomPrompt = () => {
+  if (!customPromptForm.key || !customPromptForm.name || !customPromptForm.prompt) {
+    error.value = '请填写完整的自定义提示模板信息';
+    return;
+  }
+  
+  try {
+    if (isEditingPrompt.value) {
+      updateCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    } else {
+      addCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    }
+    
+    // 重新加载翻译模式列表
+    translationModes.value = getTranslationModes(customPromptForm.currentTab || activeProvider.value);
+    
+    // 切换到新添加的翻译模式
+    selectedMode.value = customPromptForm.key;
+    
+    // 重置表单
+    customPromptForm.key = '';
+    customPromptForm.name = '';
+    customPromptForm.prompt = '';
+    customPromptForm.currentTab = '';
+    isEditingPrompt.value = false;
+    
+    // 关闭模态框
+    showCustomPromptModal.value = false;
+    
+    window.utools.showNotification('自定义提示模板' + (isEditingPrompt.value ? '更新' : '添加') + '成功');
+  } catch (err) {
+    error.value = `自定义提示模板操作失败: ${err.message}`;
+  }
+};
+
+// 编辑自定义提示模板
+const handleEditCustomPrompt = (key) => {
+  const customPrompts = getCustomPrompts();
+  const prompt = customPrompts[key];
+  if (prompt) {
+    customPromptForm.key = key;
+    customPromptForm.name = prompt.name;
+    customPromptForm.prompt = prompt.prompt;
+    isEditingPrompt.value = true;
+    showCustomPromptModal.value = true;
+  }
+};
+
+// 删除自定义提示模板
+const handleRemoveCustomPrompt = (key) => {
+  try {
+    const success = removeCustomPrompt(key);
+    if (success) {
+      // 重新加载翻译模式列表
+      translationModes.value = getTranslationModes();
+
+      // 如果当前选中的是被删除的模式，则切换到默认模式
+      if (selectedMode.value === key) {
+        selectedMode.value = 'general';
+      }
+
+      window.utools.showNotification('自定义提示模板删除成功');
+    } else {
+      error.value = '删除自定义提示模板失败';
+    }
+  } catch (err) {
+    error.value = `删除自定义提示模板失败: ${err.message}`;
+  }
+};
+
+// 删除自定义模型
+const handleRemoveCustomModel = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义模型';
+    return;
+  }
+  
+  if (!selectedModel.value) {
+    error.value = '请先选择要删除的模型';
+    return;
+  }
+  
+  try {
+    // 获取当前选中的模型信息
+    const currentModel = models.value.find(m => m.id === selectedModel.value);
+    if (!currentModel) {
+      error.value = '未找到选中的模型';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除模型 "${currentModel.name}" 吗？`)) {
+      // 从自定义提供商中删除模型
+      const customKey = activeProvider.value;
+      const modelId = selectedModel.value;
+      
+      // 调用API删除模型
+      const success = removeModelFromProvider(customKey, modelId);
+      
+      if (success) {
+        // 重新加载模型列表
+        models.value = getModels(activeProvider.value);
+        
+        // 切换到第一个可用模型
+        if (models.value.length > 0) {
+          selectedModel.value = models.value[0].id;
+        }
+        
+        window.utools.showNotification('模型删除成功');
+      } else {
+        error.value = '删除模型失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除模型失败: ${err.message}`;
+  }
+};
+
+// 删除自定义选项卡
+const handleRemoveCustomTab = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义选项卡';
+    return;
+  }
+  
+  try {
+    // 获取当前选项卡信息
+    const currentProvider = providers.value.find(p => p.key === activeProvider.value);
+    if (!currentProvider) {
+      error.value = '未找到选中的选项卡';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除选项卡 "${currentProvider.name}" 吗？`)) {
+      // 调用API删除选项卡
+      const success = removeCustomModelConfig(activeProvider.value);
+      
+      if (success) {
+        // 重新加载提供商列表
+        providers.value = getProviders();
+        
+        // 切换到第一个可用选项卡
+        if (providers.value.length > 0) {
+          activeProvider.value = providers.value[0].key;
+        }
+        
+        window.utools.showNotification('选项卡删除成功');
+      } else {
+        error.value = '删除选项卡失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除选项卡失败: ${err.message}`;
+  }
+};
+
+// 语言选项
+const languageOptions = [
+  { key: '自动识别', name: '自动识别' },
+  { key: '中文', name: '中文' },
+  { key: '英语', name: '英语' },
+  { key: '日语', name: '日语' },
+  { key: '韩语', name: '韩语' },
+  { key: '法语', name: '法语' },
+  { key: '德语', name: '德语' },
+  { key: '西班牙语', name: '西班牙语' },
+  { key: '俄语', name: '俄语' }
+];
+
+// 为当前选项卡添加模型
+const handleAddModelToCurrentTab = () => {
+  // 重置表单
+  addToTabModelForm.id = '';
+  addToTabModelForm.name = '';
+  
+  // 打开模态框
+  showAddModelToTabModal.value = true;
+};
+
+// 新增：处理为当前选项卡添加模型的提交
+const handleAddModelToTab = () => {
+  if (!addToTabModelForm.id || !addToTabModelForm.name) {
+    error.value = '请填写完整的模型信息';
+    return;
+  }
+  
+  try {
+    // 调用API添加模型到当前选项卡
+    const success = addModelToProvider(
+      activeProvider.value,
+      addToTabModelForm.id,
+      addToTabModelForm.name
+    );
+    
+    if (success) {
+      // 重新加载模型列表
+      models.value = getModels(activeProvider.value);
+      
+      // 切换到新添加的模型
+      selectedModel.value = addToTabModelForm.id;
+      
+      // 重置表单
+      addToTabModelForm.id = '';
+      addToTabModelForm.name = '';
+      
+      // 关闭模态框
+      showAddModelToTabModal.value = false;
+      
+      window.utools.showNotification('模型添加成功');
+    } else {
+      error.value = '添加模型失败';
+    }
+  } catch (err) {
+    error.value = `添加模型失败: ${err.message}`;
+  }
+};
+
+// 为当前选项卡添加提示
+const handleAddPromptToCurrentTab = () => {
+  // 设置当前选项卡信息
+  customPromptForm.currentTab = activeProvider.value;
+  // 打开模态框
+  showCustomPromptModal.value = false;
+  // 延迟打开，确保状态已更新
+  setTimeout(() => {
+    showCustomPromptModal.value = true;
+  }, 0);
+};
+
+// 修改添加自定义模型方法
+const handleAddCustomModel = () => {
+  if (!customModelForm.name || !customModelForm.baseURL || customModelForm.models.length === 0) {
+    error.value = '请填写完整的自定义模型信息';
+    return;
+  }
+  
+  try {
+    const newProviderKey = addCustomModelConfig(
+      customModelForm.name,
+      customModelForm.baseURL,
+      customModelForm.models
+    );
+    
+    // 重新加载提供商列表
+    providers.value = getProviders();
+    
+    // 切换到新添加的提供商
+    activeProvider.value = newProviderKey;
+    
+    // 重置表单
+    customModelForm.name = '';
+    customModelForm.baseURL = '';
+    customModelForm.models = [{ id: '', name: '' }];
+    customModelForm.currentTab = '';
+    
+    // 关闭模态框
+    showCustomModelModal.value = false;
+    
+    window.utools.showNotification('自定义模型添加成功');
+  } catch (err) {
+    error.value = `添加自定义模型失败: ${err.message}`;
+  }
+};
+
+// 修改添加自定义提示模板方法
+const handleAddCustomPrompt = () => {
+  if (!customPromptForm.key || !customPromptForm.name || !customPromptForm.prompt) {
+    error.value = '请填写完整的自定义提示模板信息';
+    return;
+  }
+  
+  try {
+    if (isEditingPrompt.value) {
+      updateCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    } else {
+      addCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    }
+    
+    // 重新加载翻译模式列表
+    translationModes.value = getTranslationModes(customPromptForm.currentTab || activeProvider.value);
+    
+    // 切换到新添加的翻译模式
+    selectedMode.value = customPromptForm.key;
+    
+    // 重置表单
+    customPromptForm.key = '';
+    customPromptForm.name = '';
+    customPromptForm.prompt = '';
+    customPromptForm.currentTab = '';
+    isEditingPrompt.value = false;
+    
+    // 关闭模态框
+    showCustomPromptModal.value = false;
+    
+    window.utools.showNotification('自定义提示模板' + (isEditingPrompt.value ? '更新' : '添加') + '成功');
+  } catch (err) {
+    error.value = `自定义提示模板操作失败: ${err.message}`;
+  }
+};
+
+// 编辑自定义提示模板
+const handleEditCustomPrompt = (key) => {
+  const customPrompts = getCustomPrompts();
+  const prompt = customPrompts[key];
+  if (prompt) {
+    customPromptForm.key = key;
+    customPromptForm.name = prompt.name;
+    customPromptForm.prompt = prompt.prompt;
+    isEditingPrompt.value = true;
+    showCustomPromptModal.value = true;
+  }
+};
+
+// 删除自定义提示模板
+const handleRemoveCustomPrompt = (key) => {
+  try {
+    const success = removeCustomPrompt(key);
+    if (success) {
+      // 重新加载翻译模式列表
+      translationModes.value = getTranslationModes();
+
+      // 如果当前选中的是被删除的模式，则切换到默认模式
+      if (selectedMode.value === key) {
+        selectedMode.value = 'general';
+      }
+
+      window.utools.showNotification('自定义提示模板删除成功');
+    } else {
+      error.value = '删除自定义提示模板失败';
+    }
+  } catch (err) {
+    error.value = `删除自定义提示模板失败: ${err.message}`;
+  }
+};
+
+// 删除自定义模型
+const handleRemoveCustomModel = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义模型';
+    return;
+  }
+  
+  if (!selectedModel.value) {
+    error.value = '请先选择要删除的模型';
+    return;
+  }
+  
+  try {
+    // 获取当前选中的模型信息
+    const currentModel = models.value.find(m => m.id === selectedModel.value);
+    if (!currentModel) {
+      error.value = '未找到选中的模型';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除模型 "${currentModel.name}" 吗？`)) {
+      // 从自定义提供商中删除模型
+      const customKey = activeProvider.value;
+      const modelId = selectedModel.value;
+      
+      // 调用API删除模型
+      const success = removeModelFromProvider(customKey, modelId);
+      
+      if (success) {
+        // 重新加载模型列表
+        models.value = getModels(activeProvider.value);
+        
+        // 切换到第一个可用模型
+        if (models.value.length > 0) {
+          selectedModel.value = models.value[0].id;
+        }
+        
+        window.utools.showNotification('模型删除成功');
+      } else {
+        error.value = '删除模型失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除模型失败: ${err.message}`;
+  }
+};
+
+// 删除自定义选项卡
+const handleRemoveCustomTab = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义选项卡';
+    return;
+  }
+  
+  try {
+    // 获取当前选项卡信息
+    const currentProvider = providers.value.find(p => p.key === activeProvider.value);
+    if (!currentProvider) {
+      error.value = '未找到选中的选项卡';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除选项卡 "${currentProvider.name}" 吗？`)) {
+      // 调用API删除选项卡
+      const success = removeCustomModelConfig(activeProvider.value);
+      
+      if (success) {
+        // 重新加载提供商列表
+        providers.value = getProviders();
+        
+        // 切换到第一个可用选项卡
+        if (providers.value.length > 0) {
+          activeProvider.value = providers.value[0].key;
+        }
+        
+        window.utools.showNotification('选项卡删除成功');
+      } else {
+        error.value = '删除选项卡失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除选项卡失败: ${err.message}`;
+  }
+};
+
+// 语言选项
+const languageOptions = [
+  { key: '自动识别', name: '自动识别' },
+  { key: '中文', name: '中文' },
+  { key: '英语', name: '英语' },
+  { key: '日语', name: '日语' },
+  { key: '韩语', name: '韩语' },
+  { key: '法语', name: '法语' },
+  { key: '德语', name: '德语' },
+  { key: '西班牙语', name: '西班牙语' },
+  { key: '俄语', name: '俄语' }
+];
+
+// 为当前选项卡添加模型
+const handleAddModelToCurrentTab = () => {
+  // 重置表单
+  addToTabModelForm.id = '';
+  addToTabModelForm.name = '';
+  
+  // 打开模态框
+  showAddModelToTabModal.value = true;
+};
+
+// 新增：处理为当前选项卡添加模型的提交
+const handleAddModelToTab = () => {
+  if (!addToTabModelForm.id || !addToTabModelForm.name) {
+    error.value = '请填写完整的模型信息';
+    return;
+  }
+  
+  try {
+    // 调用API添加模型到当前选项卡
+    const success = addModelToProvider(
+      activeProvider.value,
+      addToTabModelForm.id,
+      addToTabModelForm.name
+    );
+    
+    if (success) {
+      // 重新加载模型列表
+      models.value = getModels(activeProvider.value);
+      
+      // 切换到新添加的模型
+      selectedModel.value = addToTabModelForm.id;
+      
+      // 重置表单
+      addToTabModelForm.id = '';
+      addToTabModelForm.name = '';
+      
+      // 关闭模态框
+      showAddModelToTabModal.value = false;
+      
+      window.utools.showNotification('模型添加成功');
+    } else {
+      error.value = '添加模型失败';
+    }
+  } catch (err) {
+    error.value = `添加模型失败: ${err.message}`;
+  }
+};
+
+// 为当前选项卡添加提示
+const handleAddPromptToCurrentTab = () => {
+  // 设置当前选项卡信息
+  customPromptForm.currentTab = activeProvider.value;
+  // 打开模态框
+  showCustomPromptModal.value = false;
+  // 延迟打开，确保状态已更新
+  setTimeout(() => {
+    showCustomPromptModal.value = true;
+  }, 0);
+};
+
+// 修改添加自定义模型方法
+const handleAddCustomModel = () => {
+  if (!customModelForm.name || !customModelForm.baseURL || customModelForm.models.length === 0) {
+    error.value = '请填写完整的自定义模型信息';
+    return;
+  }
+  
+  try {
+    const newProviderKey = addCustomModelConfig(
+      customModelForm.name,
+      customModelForm.baseURL,
+      customModelForm.models
+    );
+    
+    // 重新加载提供商列表
+    providers.value = getProviders();
+    
+    // 切换到新添加的提供商
+    activeProvider.value = newProviderKey;
+    
+    // 重置表单
+    customModelForm.name = '';
+    customModelForm.baseURL = '';
+    customModelForm.models = [{ id: '', name: '' }];
+    customModelForm.currentTab = '';
+    
+    // 关闭模态框
+    showCustomModelModal.value = false;
+    
+    window.utools.showNotification('自定义模型添加成功');
+  } catch (err) {
+    error.value = `添加自定义模型失败: ${err.message}`;
+  }
+};
+
+// 修改添加自定义提示模板方法
+const handleAddCustomPrompt = () => {
+  if (!customPromptForm.key || !customPromptForm.name || !customPromptForm.prompt) {
+    error.value = '请填写完整的自定义提示模板信息';
+    return;
+  }
+  
+  try {
+    if (isEditingPrompt.value) {
+      updateCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    } else {
+      addCustomPrompt(
+        customPromptForm.key,
+        customPromptForm.name,
+        customPromptForm.prompt,
+        customPromptForm.currentTab || activeProvider.value
+      );
+    }
+    
+    // 重新加载翻译模式列表
+    translationModes.value = getTranslationModes(customPromptForm.currentTab || activeProvider.value);
+    
+    // 切换到新添加的翻译模式
+    selectedMode.value = customPromptForm.key;
+    
+    // 重置表单
+    customPromptForm.key = '';
+    customPromptForm.name = '';
+    customPromptForm.prompt = '';
+    customPromptForm.currentTab = '';
+    isEditingPrompt.value = false;
+    
+    // 关闭模态框
+    showCustomPromptModal.value = false;
+    
+    window.utools.showNotification('自定义提示模板' + (isEditingPrompt.value ? '更新' : '添加') + '成功');
+  } catch (err) {
+    error.value = `自定义提示模板操作失败: ${err.message}`;
+  }
+};
+
+// 编辑自定义提示模板
+const handleEditCustomPrompt = (key) => {
+  const customPrompts = getCustomPrompts();
+  const prompt = customPrompts[key];
+  if (prompt) {
+    customPromptForm.key = key;
+    customPromptForm.name = prompt.name;
+    customPromptForm.prompt = prompt.prompt;
+    isEditingPrompt.value = true;
+    showCustomPromptModal.value = true;
+  }
+};
+
+// 删除自定义提示模板
+const handleRemoveCustomPrompt = (key) => {
+  try {
+    const success = removeCustomPrompt(key);
+    if (success) {
+      // 重新加载翻译模式列表
+      translationModes.value = getTranslationModes();
+
+      // 如果当前选中的是被删除的模式，则切换到默认模式
+      if (selectedMode.value === key) {
+        selectedMode.value = 'general';
+      }
+
+      window.utools.showNotification('自定义提示模板删除成功');
+    } else {
+      error.value = '删除自定义提示模板失败';
+    }
+  } catch (err) {
+    error.value = `删除自定义提示模板失败: ${err.message}`;
+  }
+};
+
+// 删除自定义模型
+const handleRemoveCustomModel = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义模型';
+    return;
+  }
+  
+  if (!selectedModel.value) {
+    error.value = '请先选择要删除的模型';
+    return;
+  }
+  
+  try {
+    // 获取当前选中的模型信息
+    const currentModel = models.value.find(m => m.id === selectedModel.value);
+    if (!currentModel) {
+      error.value = '未找到选中的模型';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除模型 "${currentModel.name}" 吗？`)) {
+      // 从自定义提供商中删除模型
+      const customKey = activeProvider.value;
+      const modelId = selectedModel.value;
+      
+      // 调用API删除模型
+      const success = removeModelFromProvider(customKey, modelId);
+      
+      if (success) {
+        // 重新加载模型列表
+        models.value = getModels(activeProvider.value);
+        
+        // 切换到第一个可用模型
+        if (models.value.length > 0) {
+          selectedModel.value = models.value[0].id;
+        }
+        
+        window.utools.showNotification('模型删除成功');
+      } else {
+        error.value = '删除模型失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除模型失败: ${err.message}`;
+  }
+};
+
+// 删除自定义选项卡
+const handleRemoveCustomTab = () => {
+  if (!activeProvider.value.startsWith('custom_')) {
+    error.value = '只能删除自定义选项卡';
+    return;
+  }
+  
+  try {
+    // 获取当前选项卡信息
+    const currentProvider = providers.value.find(p => p.key === activeProvider.value);
+    if (!currentProvider) {
+      error.value = '未找到选中的选项卡';
+      return;
+    }
+    
+    // 确认是否删除
+    if (window.confirm(`确定要删除选项卡 "${currentProvider.name}" 吗？`)) {
+      // 调用API删除选项卡
+      const success = removeCustomModelConfig(activeProvider.value);
+      
+      if (success) {
+        // 重新加载提供商列表
+        providers.value = getProviders();
+        
+        // 切换到第一个可用选项卡
+        if (providers.value.length > 0) {
+          activeProvider.value = providers.value[0].key;
+        }
+        
+        window.utools.showNotification('选项卡删除成功');
+      } else {
+        error.value = '删除选项卡失败';
+      }
+    }
+  } catch (err) {
+    error.value = `删除选项卡失败: ${err.message}`;
+  }
+};
+
+// 语言选项
+const languageOptions = [
+  { key: '自动识别', name: '自动识别' },
+  { key: '中文', name: '中文' },
+  { key: '英语', name: '英语' },
+  { key: '日语', name: '日语' },
+  { key: '韩语', name: '韩语' },
+  { key: '法语', name: '法语' },
+  { key: '德语', name: '德语' },
+  { key: '西班牙语', name: '西班牙语' },
+  { key: '俄语', name: '俄语' }
+];
