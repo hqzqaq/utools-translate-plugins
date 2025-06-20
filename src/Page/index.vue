@@ -44,6 +44,7 @@ const loading = ref(false);
 const error = ref('');
 // 添加一个标记，记录用户是否手动选择了目标语言
 const userSelectedTarget = ref(false);
+const instructionList = ['翻译', 'LLM翻译', 'LLM-translate'];
 
 // 字数限制
 const maxLength = 200000;
@@ -69,7 +70,7 @@ const loadModels = () => {
   // 加载保存的API密钥
   apiKey.value = getSavedApiKey(activeProvider.value);
   // 正确引用 props 中的 enterAction
-  if (props.enterAction && props.enterAction.payload && props.enterAction.payload != "翻译") {
+  if (props.enterAction && props.enterAction.payload && !instructionList.includes(props.enterAction.payload)) {
     inputText.value = props.enterAction.payload;
     handleTranslate();
   }
