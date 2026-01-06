@@ -7,7 +7,8 @@ const modelConfigs = {
     zhipu: {
         name: '智谱',
         models: [
-            { id: 'GLM-4-Flash-250414', name: 'glm-4-flash' }
+            { id: 'GLM-4-Flash-250414', name: 'glm-4-flash' },
+            { id: 'glm-4.5-flash', name: 'glm-4.5-flash' },
         ],
         createClient: (apiKey) => apiKey,
         translate: async (client, model, prompt) => {
