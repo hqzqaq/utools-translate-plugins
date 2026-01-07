@@ -1,21 +1,58 @@
 :root {
   --blue: rgb(88, 164, 246);
   --light: #fff;
+  
+  --bg-color: #f4f4f4;
+  --text-color: #333;
+  --border-color: #d9d9d9;
+  --input-bg: #fff;
+  --input-border: #d9d9d9;
+  --button-bg: rgb(88, 164, 246);
+  --button-text: #fff;
+  --panel-bg: #fff;
+  --hover-bg: #f5f5f5;
+  --scrollbar-track: #f4f4f4;
+  --scrollbar-thumb: #999;
+  --modal-bg: #fff;
+  --select-bg: #fff;
+  --tag-bg: #e6f7ff;
+  --tag-color: #1890ff;
+}
+
+[data-theme='dark'] {
+  --bg-color: #1a1a1a;
+  --text-color: #e8e8e8;
+  --border-color: #424242;
+  --input-bg: #2a2a2a;
+  --input-border: #424242;
+  --button-bg: #1677ff;
+  --button-text: #fff;
+  --panel-bg: #262626;
+  --hover-bg: #303030;
+  --scrollbar-track: #1a1a1a;
+  --scrollbar-thumb: #555;
+  --modal-bg: #262626;
+  --select-bg: #2a2a2a;
+  --tag-bg: #112a45;
+  --tag-color: #4096ff;
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s, color 0.3s;
 }
 
 button {
   border: none;
-  background: none var(--blue);
-  color: var(--light);
+  background: var(--button-bg);
+  color: var(--button-text);
   line-height: 2.5;
   cursor: pointer;
-  transition: opacity .2s;
+  transition: opacity 0.2s, background-color 0.3s;
 }
 
 button:disabled {
@@ -30,34 +67,186 @@ button:not(:disabled):active {
 textarea {
   display: block;
   margin: 0;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  border-color: var(--input-border);
 }
 
-@media (prefers-color-scheme: light) {
-  body {
-    background-color: #f4f4f4;
-  }
-
-  ::-webkit-scrollbar-track-piece {
-    background-color: #f4f4f4;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    border-color: #f4f4f4;
-  }
+::-webkit-scrollbar-track-piece {
+  background-color: var(--scrollbar-track);
 }
 
-@media (prefers-color-scheme: dark) {
-  &::-webkit-scrollbar-track-piece {
-    background-color: #303133;
-  }
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border: 2px solid var(--scrollbar-track);
+  border-radius: 4px;
+}
 
-  &::-webkit-scrollbar-thumb {
-    background-color: #666;
-    border-color: #303133;
-  }
+::-webkit-scrollbar-thumb:hover {
+  background-color: #777;
+}
 
-  body {
-    background-color: #303133;
-    color: #fff;
-  }
+[data-theme='dark'] .ant-btn {
+  background-color: var(--button-bg);
+  border-color: var(--button-bg);
+  color: var(--button-text);
+}
+
+[data-theme='dark'] .ant-btn-primary {
+  background-color: #1677ff;
+  border-color: #1677ff;
+}
+
+[data-theme='dark'] .ant-btn-primary:hover {
+  background-color: #4096ff;
+  border-color: #4096ff;
+}
+
+[data-theme='dark'] .ant-btn-default {
+  background-color: var(--input-bg);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-btn-default:hover {
+  background-color: var(--hover-bg);
+  border-color: var(--button-bg);
+  color: var(--button-bg);
+}
+
+[data-theme='dark'] .ant-btn-link {
+  color: var(--button-bg);
+}
+
+[data-theme='dark'] .ant-btn-link:hover {
+  color: #4096ff;
+}
+
+[data-theme='dark'] .ant-input,
+[data-theme='dark'] .ant-input-password,
+[data-theme='dark'] .ant-input-textarea textarea {
+  background-color: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-input:hover,
+[data-theme='dark'] .ant-input-password:hover,
+[data-theme='dark'] .ant-input-textarea textarea:hover {
+  border-color: var(--button-bg);
+}
+
+[data-theme='dark'] .ant-input:focus,
+[data-theme='dark'] .ant-input-password:focus,
+[data-theme='dark'] .ant-input-textarea textarea:focus,
+[data-theme='dark'] .ant-input-focused,
+[data-theme='dark'] .ant-input-password-focused {
+  border-color: var(--button-bg);
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+}
+
+[data-theme='dark'] .ant-input-password-icon {
+  color: #999;
+}
+
+[data-theme='dark'] .ant-input-password-icon:hover {
+  color: #e8e8e8;
+}
+
+[data-theme='dark'] .ant-select-arrow {
+  color: #999;
+}
+
+[data-theme='dark'] .ant-select:hover .ant-select-arrow {
+  color: #e8e8e8;
+}
+
+[data-theme='dark'] .ant-select-selector {
+  background-color: var(--select-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-color) !important;
+}
+
+[data-theme='dark'] .ant-select-selection-item {
+  color: var(--text-color) !important;
+}
+
+[data-theme='dark'] .ant-select-dropdown {
+  background-color: var(--panel-bg) !important;
+  border-color: var(--border-color) !important;
+}
+
+[data-theme='dark'] .ant-select-item {
+  color: var(--text-color) !important;
+}
+
+[data-theme='dark'] .ant-select-item-option-selected {
+  background-color: var(--hover-bg) !important;
+}
+
+[data-theme='dark'] .ant-select-item-option-active {
+  background-color: var(--hover-bg) !important;
+}
+
+[data-theme='dark'] .ant-modal-content {
+  background-color: var(--modal-bg);
+}
+
+[data-theme='dark'] .ant-modal-header {
+  background-color: var(--modal-bg);
+  border-bottom-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-modal-title {
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-modal-body {
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-modal-footer {
+  background-color: var(--modal-bg);
+  border-top-color: var(--border-color);
+}
+
+[data-theme='dark'] .ant-form-item-label > label {
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-tabs-tab {
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-tabs-tab-active {
+  color: var(--button-bg);
+}
+
+[data-theme='dark'] .ant-tabs-ink-bar {
+  background-color: var(--button-bg);
+}
+
+[data-theme='dark'] .ant-tag {
+  background-color: var(--tag-bg);
+  border-color: var(--tag-bg);
+  color: var(--tag-color);
+}
+
+[data-theme='dark'] .ant-spin-text {
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-message-notice-content {
+  background-color: var(--panel-bg);
+  color: var(--text-color);
+}
+
+[data-theme='dark'] .ant-notification {
+  background-color: var(--panel-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
+
+[data-theme='dark'] .ant-notification-notice-message {
+  color: var(--text-color);
 }

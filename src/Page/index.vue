@@ -1,6 +1,12 @@
 <script lang="ts" setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue';
 import {
+  PlusOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  BulbOutlined
+} from '@ant-design/icons-vue';
+import {
   getTranslationModes,
   getProviders,
   getModels,
@@ -42,9 +48,33 @@ const inputText = ref('');
 const translatedText = ref('');
 const loading = ref(false);
 const error = ref('');
-// 添加一个标记，记录用户是否手动选择了目标语言
 const userSelectedTarget = ref(false);
 const instructionList = ['翻译', 'LLM翻译', 'LLM-translate'];
+
+const theme = ref('light');
+
+const toggleTheme = () => {
+  theme.value = theme.value === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', theme.value);
+  window.utools.dbStorage.setItem('theme', theme.value);
+};
+
+onMounted(() => {
+  const savedTheme = window.utools.dbStorage.getItem('theme');
+  if (savedTheme) {
+    theme.value = savedTheme;
+  } else {
+    theme.value = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', theme.value);
+  
+  const lastActiveProvider = window.utools.dbStorage.getItem('last_active_provider');
+  if (lastActiveProvider && providers.value.some(p => p.key === lastActiveProvider)) {
+    activeProvider.value = lastActiveProvider;
+  }
+
+  loadModels();
+});
 
 // 字数限制
 const maxLength = 200000;
@@ -79,18 +109,6 @@ const loadModels = () => {
 // 当提供商变化时重新加载模型
 watch(activeProvider, loadModels);
 
-// 初始化
-onMounted(() => {
-  // 从 uTools 数据库中读取上次选择的选项卡
-  const lastActiveProvider = window.utools.dbStorage.getItem('last_active_provider');
-  if (lastActiveProvider && providers.value.some(p => p.key === lastActiveProvider)) {
-    activeProvider.value = lastActiveProvider;
-  }
-
-  loadModels();
-});
-
-// 翻译函数
 const handleTranslate = async () => {
   if (!inputText.value) return;
   if (isOverLimit.value) {
@@ -474,20 +492,26 @@ const languageOptions = [
       <a-tabs v-model:activeKey="activeProvider">
         <a-tab-pane v-for="provider in providers" :key="provider.key" :tab="provider.name" />
       </a-tabs>
-      <!-- 添加选项卡按钮 -->
-      <a-button type="link" class="add-tab-button" @click="showCustomModelModal = true">
-        <plus-outlined />
-      </a-button>
-      <!-- 删除选项卡按钮 - 新增 -->
-      <a-button 
-        v-if="activeProvider.startsWith('custom_')" 
-        type="link" 
-        class="delete-tab-button" 
-        danger 
-        @click="handleRemoveCustomTab"
-      >
-        <delete-outlined />
-      </a-button>
+      <div class="header-actions">
+        <!-- 添加选项卡按钮 -->
+        <a-button type="link" class="add-tab-button" @click="showCustomModelModal = true">
+          <plus-outlined />
+        </a-button>
+        <!-- 删除选项卡按钮 - 新增 -->
+        <a-button 
+          v-if="activeProvider.startsWith('custom_')" 
+          type="link" 
+          class="delete-tab-button" 
+          danger 
+          @click="handleRemoveCustomTab"
+        >
+          <delete-outlined />
+        </a-button>
+        <!-- 主题切换按钮 -->
+        <a-button type="link" class="theme-toggle-button" @click="toggleTheme">
+          <bulb-outlined />
+        </a-button>
+      </div>
     </div>
 
     <!-- 主体翻译区域 -->
@@ -690,6 +714,12 @@ const languageOptions = [
   box-shadow: 0 2px 12px 0 rgba(24, 144, 255, 0.06);
 }
 
+.translator-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 :deep(.ant-tabs-nav .ant-tabs-tab-active) {
   color: #1890ff !important;
   font-weight: bold;
@@ -720,6 +750,20 @@ const languageOptions = [
   border-radius: 12px;
   box-shadow: 0 2px 16px 0 rgba(24, 144, 255, 0.08);
   border-left: 5px solid #1890ff;
+}
+
+.settings-panel .ant-btn-link {
+  background: transparent !important;
+  color: #1890ff !important;
+  padding: 0 8px;
+  height: auto;
+  line-height: 1.5;
+  margin-left: 12px;
+}
+
+.settings-panel .ant-btn-link:hover {
+  background: rgba(24, 144, 255, 0.1) !important;
+  color: #40a9ff !important;
 }
 
 .setting-label {
@@ -810,6 +854,26 @@ const languageOptions = [
   font-style: italic;
 }
 
+::placeholder {
+  color: #bfbfbf;
+  opacity: 1;
+}
+
+::-webkit-input-placeholder {
+  color: #bfbfbf;
+  opacity: 1;
+}
+
+::-moz-placeholder {
+  color: #bfbfbf;
+  opacity: 1;
+}
+
+:-ms-input-placeholder {
+  color: #bfbfbf;
+  opacity: 1;
+}
+
 .error-message {
   color: #ff4d4f;
   background: #fff2f0;
@@ -839,65 +903,6 @@ const languageOptions = [
   background: #1890ff;
 }
 
-/* 暗色模式 */
-@media (prefers-color-scheme: dark) {
-  .translator-container {
-    background: linear-gradient(135deg, #232946 0%, #16161a 100%);
-  }
-
-  .translator-header {
-    background: #232946;
-    border-color: #303030;
-    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
-  }
-
-  .settings-panel {
-    background: linear-gradient(90deg, #232946 0%, #21213a 100%);
-    border-left: 5px solid #177ddc;
-    box-shadow: 0 2px 16px rgba(24, 144, 255, 0.18);
-  }
-
-  .setting-label {
-    color: #40a9ff;
-  }
-
-  .input-panel,
-  .output-panel {
-    background: #232946;
-    border-color: #303030;
-    box-shadow: 0 2px 10px rgba(24, 144, 255, 0.18);
-  }
-
-  .panel-header,
-  .panel-footer {
-    background: #21213a;
-    border-color: #303030;
-  }
-
-  .translated-text {
-    color: #eaf6fb;
-  }
-
-  .placeholder {
-    color: #666;
-  }
-
-  .error-message {
-    background: rgba(255, 77, 79, 0.08);
-  }
-
-  ::-webkit-scrollbar-track {
-    background: #232946;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: #177ddc;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: #40a9ff;
-  }
-}
 .add-tab-button {
   margin-left: 8px;
   padding: 0 8px;
@@ -913,6 +918,142 @@ const languageOptions = [
 .add-tab-button:hover {
   background-color: #e6f7ff;
   color: #40a9ff;
+}
+
+.delete-tab-button {
+  margin-left: 8px;
+  padding: 0 8px;
+  font-size: 16px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.theme-toggle-button {
+  margin-left: 8px;
+  padding: 0 8px;
+  font-size: 16px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 4px;
+  background-color: #f0f5ff;
+  color: #1890ff;
+  transition: all 0.3s;
+}
+
+.theme-toggle-button:hover {
+  background-color: #e6f7ff;
+  color: #40a9ff;
+}
+
+[data-theme='dark'] .add-tab-button,
+[data-theme='dark'] .theme-toggle-button {
+  background-color: #1f2937;
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .add-tab-button:hover,
+[data-theme='dark'] .theme-toggle-button:hover {
+  background-color: #374151;
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .translator-container {
+  background: linear-gradient(135deg, #1a1a1a 0%, #262626 100%);
+}
+
+[data-theme='dark'] .translator-header {
+  background: #262626;
+  border-color: #424242;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.15);
+}
+
+[data-theme='dark'] .settings-panel {
+  background: linear-gradient(90deg, #262626 0%, #2a2a2a 100%);
+  border-left: 5px solid #1677ff;
+  box-shadow: 0 2px 16px rgba(24, 144, 255, 0.18);
+}
+
+[data-theme='dark'] .settings-panel .ant-btn-link {
+  background: transparent !important;
+  color: #4096ff !important;
+  margin-left: 12px;
+}
+
+[data-theme='dark'] .settings-panel .ant-btn-link:hover {
+  background: rgba(64, 150, 255, 0.15) !important;
+  color: #69b1ff !important;
+}
+
+[data-theme='dark'] .setting-label {
+  color: #4096ff;
+}
+
+[data-theme='dark'] .input-panel,
+[data-theme='dark'] .output-panel {
+  background: #262626;
+  border-color: #424242;
+  box-shadow: 0 2px 10px rgba(24, 144, 255, 0.18);
+}
+
+[data-theme='dark'] .panel-header,
+[data-theme='dark'] .panel-footer {
+  background: #2a2a2a;
+  border-color: #424242;
+}
+
+[data-theme='dark'] .translated-text {
+  color: #e8e8e8;
+}
+
+[data-theme='dark'] .placeholder {
+  color: #999;
+}
+
+[data-theme='dark'] ::placeholder {
+  color: #999 !important;
+  opacity: 1;
+}
+
+[data-theme='dark'] ::-webkit-input-placeholder {
+  color: #999 !important;
+  opacity: 1;
+}
+
+[data-theme='dark'] ::-moz-placeholder {
+  color: #999 !important;
+  opacity: 1;
+}
+
+[data-theme='dark'] :-ms-input-placeholder {
+  color: #999 !important;
+  opacity: 1;
+}
+
+[data-theme='dark'] .error-message {
+  background: rgba(255, 77, 79, 0.15);
+  color: #ff7875;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #555;
+}
+
+[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
+[data-theme='dark'] .word-count {
+  color: #999;
+}
+
+[data-theme='dark'] .word-count.over-limit {
+  color: #ff7875;
 }
 </style>
 
